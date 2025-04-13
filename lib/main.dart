@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
+import 'package:intl/intl.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -15,9 +16,20 @@ class QuranMemorizationApp extends StatelessWidget {
     return MaterialApp(
       title: 'Quran Memorization Tracker',
       theme: ThemeData(
-        primarySwatch: Colors.green,
-        visualDensity: VisualDensity.adaptivePlatformDensity,
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: Colors.green,
+          brightness: Brightness.light,
+        ),
+        useMaterial3: true,
       ),
+      darkTheme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: Colors.green,
+          brightness: Brightness.dark,
+        ),
+        useMaterial3: true,
+      ),
+      themeMode: ThemeMode.system,
       home: const MemorizationGrid(),
     );
   }
@@ -27,24 +39,26 @@ class MemorizationGrid extends StatefulWidget {
   const MemorizationGrid({super.key});
 
   @override
-  MemorizationGridState createState() => MemorizationGridState();
+  State<MemorizationGrid> createState() => _MemorizationGridState();
 }
 
-class MemorizationGridState extends State<MemorizationGrid> {
+class _MemorizationGridState extends State<MemorizationGrid> {
   final int juzCount = 30;
   late List<List<int>> data;
+  late List<List<DateTime?>> revisedDates;
   late List<int> pagesPerJuz;
   bool _isLoading = true;
   final ScrollController _horizontalScrollController = ScrollController();
   final ScrollController _verticalScrollController = ScrollController();
+  final DateFormat _dateFormat = DateFormat('MMM d');
 
   @override
   void initState() {
     super.initState();
     pagesPerJuz = List.generate(juzCount, (index) {
-      if (index == 0) return 21;    // Juz 1 has 21 pages
-      if (index == 29) return 23;   // Juz 30 has 23 pages
-      return 20;                    // Juz 2-29 have 20 pages
+      if (index == 0) return 21;
+      if (index == 29) return 23;
+      return 20;
     });
     _loadData();
   }
@@ -52,6 +66,7 @@ class MemorizationGridState extends State<MemorizationGrid> {
   Future<void> _loadData() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     String? savedData = prefs.getString('memorization_data');
+    String? savedDates = prefs.getString('memorization_dates');
 
     if (savedData != null) {
       List<dynamic> jsonData = json.decode(savedData);
@@ -65,6 +80,15 @@ class MemorizationGridState extends State<MemorizationGrid> {
       _initializeDefaultData();
     }
 
+    if (savedDates != null) {
+      List<dynamic> jsonDates = json.decode(savedDates);
+      revisedDates = jsonDates.map((juz) => 
+        (juz as List).map((date) => date != null ? DateTime.parse(date) : null).toList()
+      ).toList();
+    } else {
+      revisedDates = List.generate(juzCount, (juz) => List.generate(pagesPerJuz[juz], (_) => null));
+    }
+
     setState(() {
       _isLoading = false;
     });
@@ -72,36 +96,51 @@ class MemorizationGridState extends State<MemorizationGrid> {
 
   void _initializeDefaultData() {
     data = List.generate(juzCount, (juz) => List.generate(pagesPerJuz[juz], (_) => 0));
+    revisedDates = List.generate(juzCount, (juz) => List.generate(pagesPerJuz[juz], (_) => null));
   }
 
   Future<void> _saveData() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     await prefs.setString('memorization_data', json.encode(data));
+    await prefs.setString('memorization_dates', json.encode(
+      revisedDates.map((juz) => juz.map((date) => date?.toIso8601String()).toList()).toList()
+    ));
   }
 
   void _updateStrength(int juzIndex, int pageIndex) async {
     setState(() {
       data[juzIndex][pageIndex] = (data[juzIndex][pageIndex] + 1) % 6;
+      if (data[juzIndex][pageIndex] > 0) {
+        revisedDates[juzIndex][pageIndex] = DateTime.now();
+      } else {
+        revisedDates[juzIndex][pageIndex] = null;
+      }
     });
     await _saveData();
   }
 
-  Color getStrengthColor(int level) {
+  Color getStrengthColor(int level, BuildContext context) {
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+    
     switch (level) {
       case 0:
-        return Colors.grey[200]!;
-      case 1:
-        return Colors.green[100]!;
-      case 2:
-        return Colors.green[300]!;
-      case 3:
-        return Colors.green[500]!;
-      case 4:
-        return Colors.green[700]!;
-      case 5:
-        return Colors.green[900]!;
+        return isDark ? Colors.grey[800]! : Colors.grey[200]!;
+      case 1: return isDark ? Colors.green[500]! : Colors.green[100]!;
+      case 2: return isDark ? Colors.green[600]! : Colors.green[300]!;
+      case 3: return isDark ? Colors.green[700]! : Colors.green[500]!;
+      case 4: return isDark ? Colors.green[800]! : Colors.green[700]!;
+      case 5: return isDark ? Colors.green[900]! : Colors.green[900]!;
       default:
-        return Colors.grey;
+        return isDark ? Colors.grey[900]! : Colors.grey[100]!;
+    }
+  }
+
+  Color getTextColor(int level, BuildContext context) {
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+    if (isDark) {
+      return level < 3 ? Colors.white : Colors.white;
+    } else {
+      return level > 2 ? Colors.white : Colors.black;
     }
   }
 
@@ -162,17 +201,17 @@ class MemorizationGridState extends State<MemorizationGrid> {
           // Legend
           Container(
             padding: const EdgeInsets.symmetric(vertical: 8),
-            color: Colors.grey[100],
+            color: Theme.of(context).cardColor,
             child: Wrap(
               alignment: WrapAlignment.center,
               spacing: 16,
               children: [
-                _buildLegendItem(0, "Not memorized"),
-                _buildLegendItem(1, "Just started"),
-                _buildLegendItem(2, "Learning"),
-                _buildLegendItem(3, "Good"),
-                _buildLegendItem(4, "Strong"),
-                _buildLegendItem(5, "Mastered"),
+                _buildLegendItem(0, "Not memorized", context),
+                _buildLegendItem(1, "Just started", context),
+                _buildLegendItem(2, "Learning", context),
+                _buildLegendItem(3, "Good", context),
+                _buildLegendItem(4, "Strong", context),
+                _buildLegendItem(5, "Mastered", context),
               ],
             ),
           ),
@@ -197,16 +236,16 @@ class MemorizationGridState extends State<MemorizationGrid> {
                         columnSpacing: 0,
                         horizontalMargin: 0,
                         headingRowHeight: 40,
-                        dataRowHeight: 50, // Slightly taller to accommodate page numbers
+                        dataRowHeight: 60,
                         columns: [
                           const DataColumn(
                             label: SizedBox(
                               width: 60,
-                              child: Text('Juz', textAlign: TextAlign.center)),
+                              child: Text('', textAlign: TextAlign.center)),
                           ),
                           ...List.generate(maxPages, (i) => DataColumn(
                             label: SizedBox(
-                              width: 60, // Wider to accommodate page numbers
+                              width: 70,
                               child: Text(
                                 '${i + 1}',
                                 textAlign: TextAlign.center,
@@ -232,13 +271,14 @@ class MemorizationGridState extends State<MemorizationGrid> {
                                 if (pageIndex < pagesPerJuz[juzIndex]) {
                                   int level = data[juzIndex][pageIndex];
                                   int pageNum = getPageNumber(juzIndex, pageIndex);
+                                  DateTime? revisedDate = revisedDates[juzIndex][pageIndex];
                                   return DataCell(
                                     GestureDetector(
                                       onTap: () => _updateStrength(juzIndex, pageIndex),
                                       child: Container(
-                                        width: 60,
-                                        height: 50,
-                                        color: getStrengthColor(level),
+                                        width: 70,
+                                        height: 60,
+                                        color: getStrengthColor(level, context),
                                         alignment: Alignment.center,
                                         child: Column(
                                           mainAxisAlignment: MainAxisAlignment.center,
@@ -247,16 +287,25 @@ class MemorizationGridState extends State<MemorizationGrid> {
                                               'Pg $pageNum',
                                               style: TextStyle(
                                                 fontSize: 10,
-                                                color: level > 2 ? Colors.white : Colors.black,
+                                                color: getTextColor(level, context),
                                               ),
                                             ),
                                             Text(
                                               level == 0 ? '' : level.toString(),
                                               style: TextStyle(
                                                 fontWeight: FontWeight.bold,
-                                                color: level > 2 ? Colors.white : Colors.black,
+                                                fontSize: 16,
+                                                color: getTextColor(level, context),
                                               ),
                                             ),
+                                            if (revisedDate != null)
+                                              Text(
+                                                _dateFormat.format(revisedDate),
+                                                style: TextStyle(
+                                                  fontSize: 8,
+                                                  color: getTextColor(level, context),
+                                                ),
+                                              ),
                                           ],
                                         ),
                                       ),
@@ -281,14 +330,14 @@ class MemorizationGridState extends State<MemorizationGrid> {
     );
   }
 
-  Widget _buildLegendItem(int level, String label) {
+  Widget _buildLegendItem(int level, String label, BuildContext context) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         Container(
           width: 20,
           height: 20,
-          color: getStrengthColor(level),
+          color: getStrengthColor(level, context),
           margin: const EdgeInsets.only(right: 4),
         ),
         Text(label, style: const TextStyle(fontSize: 12)),

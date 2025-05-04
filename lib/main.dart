@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'package:intl/intl.dart';
+import 'package:excel/excel.dart' as ex;
+import 'package:file_picker/file_picker.dart';
+import 'package:path_provider/path_provider.dart';
+import 'dart:io';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -159,21 +163,218 @@ class _MemorizationGridState extends State<MemorizationGrid> {
     return pageNumber + pageIndex;
   }
 
+  Future<void> _exportToExcel({String? customDirectory}) async {
+    try {
+      final excel = ex.Excel.createExcel();
+      // --- Sheet 1: Page Numbers ---
+      final pageSheet = excel['Page numbers'];
+      // Header row
+      pageSheet.cell(ex.CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 0)).value = ex.TextCellValue('');
+      for (int page = 0; page < pagesPerJuz.reduce((a, b) => a > b ? a : b); page++) {
+        pageSheet.cell(ex.CellIndex.indexByColumnRow(columnIndex: page + 1, rowIndex: 0)).value = ex.TextCellValue('Page ${page + 1}');
+      }
+      // Data rows
+      for (int juz = 0; juz < juzCount; juz++) {
+        pageSheet.cell(ex.CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: juz + 1)).value = ex.TextCellValue('Juz ${juz + 1}');
+        for (int page = 0; page < pagesPerJuz[juz]; page++) {
+          pageSheet.cell(ex.CellIndex.indexByColumnRow(columnIndex: page + 1, rowIndex: juz + 1)).value = ex.IntCellValue(getPageNumber(juz, page));
+        }
+      }
+
+      // --- Sheet 2: Scores/Strength ---
+      final strengthSheet = excel['Scores'];
+      strengthSheet.cell(ex.CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 0)).value = ex.TextCellValue('');
+      for (int page = 0; page < pagesPerJuz.reduce((a, b) => a > b ? a : b); page++) {
+        strengthSheet.cell(ex.CellIndex.indexByColumnRow(columnIndex: page + 1, rowIndex: 0)).value = ex.TextCellValue('Page ${page + 1}');
+      }
+      for (int juz = 0; juz < juzCount; juz++) {
+        strengthSheet.cell(ex.CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: juz + 1)).value = ex.TextCellValue('Juz ${juz + 1}');
+        for (int page = 0; page < pagesPerJuz[juz]; page++) {
+          strengthSheet.cell(ex.CellIndex.indexByColumnRow(columnIndex: page + 1, rowIndex: juz + 1)).value = ex.IntCellValue(data[juz][page]);
+        }
+      }
+
+      // --- Sheet 3: Last revised ---
+      final datesSheet = excel['Last revised'];
+      datesSheet.cell(ex.CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 0)).value = ex.TextCellValue('');
+      for (int page = 0; page < pagesPerJuz.reduce((a, b) => a > b ? a : b); page++) {
+        datesSheet.cell(ex.CellIndex.indexByColumnRow(columnIndex: page + 1, rowIndex: 0)).value = ex.TextCellValue('Page ${page + 1}');
+      }
+      for (int juz = 0; juz < juzCount; juz++) {
+        datesSheet.cell(ex.CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: juz + 1)).value = ex.TextCellValue('Juz ${juz + 1}');
+        for (int page = 0; page < pagesPerJuz[juz]; page++) {
+          final date = revisedDates[juz][page];
+          if (date != null) {
+            datesSheet.cell(ex.CellIndex.indexByColumnRow(columnIndex: page + 1, rowIndex: juz + 1)).value = ex.TextCellValue(_dateFormat.format(date));
+          }
+        }
+      }
+
+      // Remove the default empty sheet if it exists
+      if (excel.sheets.keys.contains('Sheet1')) {
+        excel.delete('Sheet1');
+      }
+
+      String filePath;
+      if (customDirectory != null) {
+        filePath = '$customDirectory/quran_memorization_data.xlsx';
+      } else {
+        final directory = await getApplicationDocumentsDirectory();
+        filePath = '${directory.path}/quran_memorization_data.xlsx';
+      }
+      final file = File(filePath);
+      await file.writeAsBytes(excel.encode()!);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Data exported to $filePath')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error exporting data: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _showExportDialog() async {
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Export Data'),
+        content: const Text('Where do you want to export the Excel file?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, 'default'),
+            child: const Text('Default location'),
+          ),
+          TextButton(
+            onPressed: () async {
+              final navigator = Navigator.of(context);
+              String? selectedDirectory = await FilePicker.platform.getDirectoryPath();
+              navigator.pop(selectedDirectory);
+            },
+            child: const Text('Choose location...'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, null),
+            child: const Text('Cancel'),
+          ),
+        ],
+      ),
+    );
+    if (result == null) return; // Cancelled
+    if (result == 'default') {
+      await _exportToExcel();
+    } else if (result.isNotEmpty) {
+      await _exportToExcel(customDirectory: result);
+    }
+  }
+
+  Future<void> _importFromExcel() async {
+    try {
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['xlsx'],
+      );
+      if (result != null) {
+        final file = File(result.files.single.path!);
+        final bytes = await file.readAsBytes();
+        final excel = ex.Excel.decodeBytes(bytes);
+        // --- Import Scores/Strength ---
+        final strengthSheet = excel['Scores'];
+          for (int juz = 0; juz < juzCount; juz++) {
+            for (int page = 0; page < pagesPerJuz[juz]; page++) {
+              final cell = strengthSheet.cell(ex.CellIndex.indexByColumnRow(columnIndex: page + 1, rowIndex: juz + 1));
+              final value = cell.value;
+              String? strValue;
+              if (value is ex.IntCellValue) {
+                data[juz][page] = value.value;
+              } else if (value is ex.TextCellValue) {
+                strValue = value.value is String
+                    ? value.value as String
+                    : (value.value as ex.TextSpan?)?.text;
+                data[juz][page] = int.tryParse(strValue ?? '') ?? 0;
+              } else if (value is ex.TextSpan) {
+                strValue = (value as ex.TextSpan?)?.text;
+                data[juz][page] = int.tryParse(strValue ?? '') ?? 0;
+              } else {
+                data[juz][page] = 0;
+              }
+            }
+          }
+        
+        // --- Import Last revised ---
+        final datesSheet = excel['Last revised'];
+          for (int juz = 0; juz < juzCount; juz++) {
+            for (int page = 0; page < pagesPerJuz[juz]; page++) {
+              final cell = datesSheet.cell(ex.CellIndex.indexByColumnRow(columnIndex: page + 1, rowIndex: juz + 1));
+              final value = cell.value;
+              String? strValue;
+              if (value is ex.TextCellValue) {
+                strValue = value.value is String
+                    ? value.value as String
+                    : (value.value as ex.TextSpan?)?.text;
+              } else if (value is ex.TextSpan) {
+                strValue = (value as ex.TextSpan?)?.text;
+              } else {
+                strValue = null;
+              }
+              if ((strValue?.trim().isNotEmpty ?? false)) {
+                try {
+                  revisedDates[juz][page] = _dateFormat.parse(strValue!);
+                } catch (_) {
+                  revisedDates[juz][page] = null;
+                }
+              } else {
+                revisedDates[juz][page] = null;
+              }
+            }
+          }
+        await _saveData();
+        setState(() {});
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Data imported successfully')),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error importing data: $e')),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
       return Scaffold(
-        appBar: AppBar(title: Text('Quran Memorization Tracker')),
+        appBar: AppBar(title: const Text('Quran Memorization Tracker')),
         body: const Center(child: CircularProgressIndicator()),
       );
     }
 
-    int maxPages = pagesPerJuz.reduce((a, b) => a > b ? a : b);
+    final maxPages = pagesPerJuz.reduce((a, b) => a > b ? a : b);
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Quran Memorization Tracker'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.file_download),
+            onPressed: _importFromExcel,
+            tooltip: 'Import from Excel',
+          ),
+          IconButton(
+            icon: const Icon(Icons.file_upload),
+            onPressed: _showExportDialog,
+            tooltip: 'Export to Excel',
+          ),
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: () {
@@ -242,7 +443,7 @@ class _MemorizationGridState extends State<MemorizationGrid> {
                       padding: const EdgeInsets.all(8),
                       child: Table(
                         defaultColumnWidth: const FixedColumnWidth(70),
-                        border: TableBorder.symmetric(
+                        border: const TableBorder.symmetric(
                           inside: BorderSide.none,
                           outside: BorderSide.none,
                         ),

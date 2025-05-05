@@ -56,6 +56,62 @@ class _MemorizationGridState extends State<MemorizationGrid> {
   final ScrollController _verticalScrollController = ScrollController();
   final DateFormat _dateFormat = DateFormat('MMM d');
 
+  // Selection mode state
+  bool _selectionMode = false;
+  Set<String> _selectedCells = {};
+
+  // For tap-to-select-range
+  int? _rangeStartJuz;
+  int? _rangeStartPage;
+
+  String _cellKey(int juz, int page) => '$juz-$page';
+
+  void _toggleSelectionMode() {
+    setState(() {
+      _selectionMode = !_selectionMode;
+      if (!_selectionMode) _selectedCells.clear();
+    });
+  }
+
+  void _toggleCellSelection(int juz, int page) {
+    final key = _cellKey(juz, page);
+    setState(() {
+      if (_selectedCells.contains(key)) {
+        _selectedCells.remove(key);
+      } else {
+        _selectedCells.add(key);
+      }
+    });
+  }
+
+  void _handleRangeTap(int juz, int page) {
+    if (!_selectionMode) return;
+    setState(() {
+      if (_rangeStartJuz == null || _rangeStartPage == null) {
+        // First tap: set start
+        _rangeStartJuz = juz;
+        _rangeStartPage = page;
+        _selectedCells.clear();
+        _selectedCells.add(_cellKey(juz, page));
+      } else {
+        // Second tap: select range
+        _selectedCells.clear();
+        int minJuz = _rangeStartJuz! < juz ? _rangeStartJuz! : juz;
+        int maxJuz = _rangeStartJuz! > juz ? _rangeStartJuz! : juz;
+        int minPage = _rangeStartPage! < page ? _rangeStartPage! : page;
+        int maxPage = _rangeStartPage! > page ? _rangeStartPage! : page;
+        for (int j = minJuz; j <= maxJuz; j++) {
+          for (int p = minPage; p <= maxPage && p < pagesPerJuz[j]; p++) {
+            _selectedCells.add(_cellKey(j, p));
+          }
+        }
+        // Reset for next range selection
+        _rangeStartJuz = null;
+        _rangeStartPage = null;
+      }
+    });
+  }
+
   @override
   void initState() {
     super.initState();
@@ -350,6 +406,183 @@ class _MemorizationGridState extends State<MemorizationGrid> {
     }
   }
 
+  Future<void> _showEditDialog(int juzIndex, int pageIndex) async {
+    int currentStrength = data[juzIndex][pageIndex];
+    DateTime? currentDate = revisedDates[juzIndex][pageIndex];
+    final TextEditingController strengthController = TextEditingController(text: currentStrength.toString());
+    DateTime? selectedDate = currentDate;
+    await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Edit Strength & Date'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: strengthController,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                labelText: 'Strength (0-5)',
+              ),
+              maxLength: 1,
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(selectedDate != null
+                      ? 'Date: ${_dateFormat.format(selectedDate!)}'
+                      : 'No date'),
+                ),
+                TextButton(
+                  onPressed: () async {
+                    final now = DateTime.now();
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: selectedDate ?? now,
+                      firstDate: DateTime(2000),
+                      lastDate: DateTime(2100),
+                    );
+                    if (picked != null) {
+                      selectedDate = picked;
+                      (context as Element).markNeedsBuild();
+                    }
+                  },
+                  child: const Text('Pick date'),
+                ),
+                if (selectedDate != null)
+                  IconButton(
+                    icon: const Icon(Icons.clear),
+                    tooltip: 'Clear date',
+                    onPressed: () {
+                      selectedDate = null;
+                      (context as Element).markNeedsBuild();
+                    },
+                  ),
+              ],
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              int? newStrength = int.tryParse(strengthController.text);
+              if (newStrength == null || newStrength < 0 || newStrength > 5) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Strength must be between 0 and 5.')),
+                );
+                return;
+              }
+              data[juzIndex][pageIndex] = newStrength;
+              revisedDates[juzIndex][pageIndex] = newStrength > 0 ? selectedDate : null;
+              _saveData();
+              setState(() {});
+              Navigator.pop(context, true);
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    strengthController.dispose();
+  }
+
+  Future<void> _showBulkEditDialog() async {
+    int? newStrength;
+    DateTime? selectedDate;
+    final strengthController = TextEditingController();
+    await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Bulk Edit Strength & Date'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: strengthController,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                labelText: 'Strength (0-5)',
+              ),
+              maxLength: 1,
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(selectedDate != null
+                      ? 'Date: ${_dateFormat.format(selectedDate!)}'
+                      : 'No date'),
+                ),
+                TextButton(
+                  onPressed: () async {
+                    final now = DateTime.now();
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: selectedDate ?? now,
+                      firstDate: DateTime(2000),
+                      lastDate: DateTime(2100),
+                    );
+                    if (picked != null) {
+                      selectedDate = picked;
+                      (context as Element).markNeedsBuild();
+                    }
+                  },
+                  child: const Text('Pick date'),
+                ),
+                if (selectedDate != null)
+                  IconButton(
+                    icon: const Icon(Icons.clear),
+                    tooltip: 'Clear date',
+                    onPressed: () {
+                      selectedDate = null;
+                      (context as Element).markNeedsBuild();
+                    },
+                  ),
+              ],
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              newStrength = int.tryParse(strengthController.text);
+              if (newStrength == null || newStrength! < 0 || newStrength! > 5) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Strength must be between 0 and 5.')),
+                );
+                return;
+              }
+              for (final key in _selectedCells) {
+                final parts = key.split('-');
+                final juz = int.parse(parts[0]);
+                final page = int.parse(parts[1]);
+                data[juz][page] = newStrength!;
+                revisedDates[juz][page] = newStrength! > 0 ? selectedDate : null;
+              }
+              _saveData();
+              setState(() {
+                _selectionMode = false;
+                _selectedCells.clear();
+              });
+              Navigator.pop(context, true);
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    strengthController.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
@@ -401,6 +634,11 @@ class _MemorizationGridState extends State<MemorizationGrid> {
                 ),
               );
             },
+          ),
+          IconButton(
+            icon: Icon(_selectionMode ? Icons.close : Icons.select_all),
+            onPressed: _toggleSelectionMode,
+            tooltip: _selectionMode ? 'Exit selection' : 'Select cells',
           ),
         ],
       ),
@@ -467,12 +705,23 @@ class _MemorizationGridState extends State<MemorizationGrid> {
                                   int pageNum = getPageNumber(juzIndex, pageIndex);
                                   DateTime? revisedDate = revisedDates[juzIndex][pageIndex];
                                   return GestureDetector(
-                                    onTap: () => _updateStrength(juzIndex, pageIndex),
+                                    behavior: HitTestBehavior.opaque,
+                                    onTap: _selectionMode
+                                        ? () => _handleRangeTap(juzIndex, pageIndex)
+                                        : () => _updateStrength(juzIndex, pageIndex),
+                                    onLongPress: _selectionMode
+                                        ? () => _toggleCellSelection(juzIndex, pageIndex)
+                                        : () => _showEditDialog(juzIndex, pageIndex),
                                     child: Container(
                                       width: 70,
                                       height: 60,
-                                      color: getStrengthColor(level, context),
                                       alignment: Alignment.center,
+                                      decoration: BoxDecoration(
+                                        color: getStrengthColor(level, context),
+                                        border: _selectionMode && _selectedCells.contains(_cellKey(juzIndex, pageIndex))
+                                            ? Border.all(color: Colors.blue, width: 3)
+                                            : null,
+                                      ),
                                       child: Column(
                                         mainAxisAlignment: MainAxisAlignment.center,
                                         children: [
@@ -515,6 +764,12 @@ class _MemorizationGridState extends State<MemorizationGrid> {
               ),
             ),
           ),
+          if (_selectionMode && _selectedCells.isNotEmpty)
+            FloatingActionButton(
+              onPressed: _showBulkEditDialog,
+              child: const Icon(Icons.edit),
+              tooltip: 'Bulk Edit',
+            ),
         ],
       ),
     );

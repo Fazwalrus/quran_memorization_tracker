@@ -6,14 +6,34 @@ import 'package:excel/excel.dart' as ex;
 import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'dart:io';
+import 'package:package_info_plus/package_info_plus.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   runApp(const QuranMemorizationApp());
 }
 
-class QuranMemorizationApp extends StatelessWidget {
+class QuranMemorizationApp extends StatefulWidget {
   const QuranMemorizationApp({super.key});
+
+  @override
+  State<QuranMemorizationApp> createState() => _QuranMemorizationAppState();
+}
+
+class _QuranMemorizationAppState extends State<QuranMemorizationApp> {
+  ThemeMode _themeMode = ThemeMode.system;
+
+  void _toggleThemeMode() {
+    setState(() {
+      if (_themeMode == ThemeMode.system) {
+        _themeMode = ThemeMode.light;
+      } else if (_themeMode == ThemeMode.light) {
+        _themeMode = ThemeMode.dark;
+      } else {
+        _themeMode = ThemeMode.system;
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -33,14 +53,19 @@ class QuranMemorizationApp extends StatelessWidget {
         ),
         useMaterial3: true,
       ),
-      themeMode: ThemeMode.system,
-      home: const MemorizationGrid(),
+      themeMode: _themeMode,
+      home: MemorizationGrid(
+        themeMode: _themeMode,
+        onThemeToggle: _toggleThemeMode,
+      ),
     );
   }
 }
 
 class MemorizationGrid extends StatefulWidget {
-  const MemorizationGrid({super.key});
+  final ThemeMode themeMode;
+  final VoidCallback onThemeToggle;
+  const MemorizationGrid({super.key, required this.themeMode, required this.onThemeToggle});
 
   @override
   State<MemorizationGrid> createState() => _MemorizationGridState();
@@ -58,7 +83,7 @@ class _MemorizationGridState extends State<MemorizationGrid> {
 
   // Selection mode state
   bool _selectionMode = false;
-  Set<String> _selectedCells = {};
+  final Set<String> _selectedCells = {};
 
   // For tap-to-select-range
   int? _rangeStartJuz;
@@ -583,6 +608,157 @@ class _MemorizationGridState extends State<MemorizationGrid> {
     strengthController.dispose();
   }
 
+  void _showStatsDialog() {
+    int totalPages = pagesPerJuz.fold(0, (a, b) => a + b);
+    int memorized = 0;
+    int mastered = 0;
+    for (int j = 0; j < juzCount; j++) {
+      for (int p = 0; p < pagesPerJuz[j]; p++) {
+        if (data[j][p] > 0) memorized++;
+        if (data[j][p] == 5) mastered++;
+      }
+    }
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Progress Stats'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Total pages: $totalPages'),
+            Text('Pages memorized: $memorized (${(memorized / totalPages * 100).toStringAsFixed(1)}%)'),
+            Text('Pages mastered: $mastered (${(mastered / totalPages * 100).toStringAsFixed(1)}%)'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showHelpDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Help & Tips'),
+        content: const SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('• Tap a cell to increment its strength.'),
+              Text('• Long-press a cell to manually edit strength/date.'),
+              Text('• Use the Select button to select multiple cells for bulk edit.'),
+              Text('• Tap two cells to select a range.'),
+              Text('• Use the import/export buttons to backup or restore your data.'),
+              Text('• Use the theme button to switch between light, dark, and system modes.'),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showSettingsDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Settings'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.file_download),
+                title: const Text('Import from Excel'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _importFromExcel();
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.file_upload),
+                title: const Text('Export to Excel'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _showExportDialog();
+                },
+              ),
+              ListTile(
+                leading: Icon(_themeIcon),
+                title: const Text('Theme'),
+                subtitle: Text(_themeTooltip),
+                onTap: () {
+                  widget.onThemeToggle();
+                  (context as Element).markNeedsBuild();
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.info_outline),
+                title: const Text('About'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _showAppInfoDialog();
+                },
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showAppInfoDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => FutureBuilder<PackageInfo>(
+        future: PackageInfo.fromPlatform(),
+        builder: (context, snapshot) {
+          final version = snapshot.hasData ? snapshot.data!.version : '...';
+          return AlertDialog(
+            title: const Text('App Info'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Quran Memorization Tracker'),
+                const SizedBox(height: 8),
+                Text('Version: $version'),
+                const SizedBox(height: 8),
+                const Text('Developer: Syed Fawwaz Hussain'),
+                const SizedBox(height: 8),
+                //const Text('© 2025 Syed Fawwaz Hussain. All rights reserved.'),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Close'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
@@ -599,46 +775,24 @@ class _MemorizationGridState extends State<MemorizationGrid> {
         title: const Text('Quran Memorization Tracker'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.file_download),
-            onPressed: _importFromExcel,
-            tooltip: 'Import from Excel',
-          ),
-          IconButton(
-            icon: const Icon(Icons.file_upload),
-            onPressed: _showExportDialog,
-            tooltip: 'Export to Excel',
-          ),
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () {
-              showDialog(
-                context: context,
-                builder: (context) => AlertDialog(
-                  title: const Text('Reset All Data'),
-                  content: const Text('Are you sure you want to reset all memorization data?'),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: const Text('Cancel'),
-                    ),
-                    TextButton(
-                      onPressed: () {
-                        _initializeDefaultData();
-                        _saveData();
-                        Navigator.pop(context);
-                        setState(() {});
-                      },
-                      child: const Text('Reset'),
-                    ),
-                  ],
-                ),
-              );
-            },
-          ),
-          IconButton(
             icon: Icon(_selectionMode ? Icons.close : Icons.select_all),
             onPressed: _toggleSelectionMode,
             tooltip: _selectionMode ? 'Exit selection' : 'Select cells',
+          ),
+          IconButton(
+            icon: const Icon(Icons.bar_chart),
+            onPressed: _showStatsDialog,
+            tooltip: 'Stats',
+          ),
+          IconButton(
+            icon: const Icon(Icons.help_outline),
+            onPressed: _showHelpDialog,
+            tooltip: 'Help',
+          ),
+          IconButton(
+            icon: const Icon(Icons.settings),
+            onPressed: _showSettingsDialog,
+            tooltip: 'Settings',
           ),
         ],
       ),
@@ -767,8 +921,8 @@ class _MemorizationGridState extends State<MemorizationGrid> {
           if (_selectionMode && _selectedCells.isNotEmpty)
             FloatingActionButton(
               onPressed: _showBulkEditDialog,
-              child: const Icon(Icons.edit),
               tooltip: 'Bulk Edit',
+              child: const Icon(Icons.edit),
             ),
         ],
       ),
@@ -788,5 +942,27 @@ class _MemorizationGridState extends State<MemorizationGrid> {
         Text(label, style: const TextStyle(fontSize: 12)),
       ],
     );
+  }
+
+  IconData get _themeIcon {
+    switch (widget.themeMode) {
+      case ThemeMode.light:
+        return Icons.wb_sunny;
+      case ThemeMode.dark:
+        return Icons.nightlight_round;
+      case ThemeMode.system:
+        return Icons.brightness_auto;
+    }
+  }
+
+  String get _themeTooltip {
+    switch (widget.themeMode) {
+      case ThemeMode.light:
+        return 'Light mode';
+      case ThemeMode.dark:
+        return 'Dark mode';
+      case ThemeMode.system:
+        return 'System mode';
+    }
   }
 }

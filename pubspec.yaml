@@ -2,7 +2,7 @@ name: quran_strength
 description: "A new Flutter project."
 publish_to: 'none'
 
-version: 1.0.0+1
+version: 1.1.0+1
 
 environment:
   sdk: '>=3.2.3 <4.0.0'
@@ -18,6 +18,7 @@ dependencies:
   excel: ^4.0.6
   file_picker: ^6.1.1
   path_provider: ^2.1.1
+  package_info_plus: ^4.2.0
 
 dev_dependencies:
   flutter_test:

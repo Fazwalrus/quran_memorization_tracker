@@ -1,0 +1,31 @@
+name: Deploy to GitHub Pages
+on:
+  push:
+    branches: [ main ] # Runs when you push to main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2 # Correct way to setup Flutter
+        with:
+          channel: 'stable'
+          cache: true # Speeds up future builds
+      - run: flutter build web --release --base-href "/quran_memorization_tracker/" # Required for GitHub sub-paths
+      - name: Upload production-ready stats
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: build/web
+
+  deploy:
+    needs: build
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to GitHub Pages
+        uses: actions/deploy-pages@v4

@@ -5,8 +5,12 @@ import 'package:intl/intl.dart';
 import 'package:excel/excel.dart' as ex;
 import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
-import 'dart:io';
+import 'dart:io' show File;
 import 'package:package_info_plus/package_info_plus.dart';
+import 'dart:typed_data'; // Required for Uint8List
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:web/web.dart' as web;
+import 'dart:js_interop';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -65,7 +69,8 @@ class _QuranMemorizationAppState extends State<QuranMemorizationApp> {
 class MemorizationGrid extends StatefulWidget {
   final ThemeMode themeMode;
   final VoidCallback onThemeToggle;
-  const MemorizationGrid({super.key, required this.themeMode, required this.onThemeToggle});
+  const MemorizationGrid(
+      {super.key, required this.themeMode, required this.onThemeToggle});
 
   @override
   State<MemorizationGrid> createState() => _MemorizationGridState();
@@ -164,7 +169,10 @@ class _MemorizationGridState extends State<MemorizationGrid> {
       List<dynamic> jsonData = json.decode(savedData);
       data = jsonData.map((row) => List<int>.from(row)).toList();
       if (data.length != juzCount ||
-          data.asMap().entries.any((entry) => entry.value.length != pagesPerJuz[entry.key])) {
+          data
+              .asMap()
+              .entries
+              .any((entry) => entry.value.length != pagesPerJuz[entry.key])) {
         _initializeDefaultData();
       }
     } else {
@@ -174,12 +182,13 @@ class _MemorizationGridState extends State<MemorizationGrid> {
     if (savedDates != null) {
       List<dynamic> jsonDates = json.decode(savedDates);
       revisedDates = jsonDates
-          .map((juz) =>
-              (juz as List).map((date) => date != null ? DateTime.parse(date) : null).toList())
+          .map((juz) => (juz as List)
+              .map((date) => date != null ? DateTime.parse(date) : null)
+              .toList())
           .toList();
     } else {
-      revisedDates =
-          List.generate(juzCount, (juz) => List.generate(pagesPerJuz[juz], (_) => null));
+      revisedDates = List.generate(
+          juzCount, (juz) => List.generate(pagesPerJuz[juz], (_) => null));
     }
 
     setState(() {
@@ -188,8 +197,10 @@ class _MemorizationGridState extends State<MemorizationGrid> {
   }
 
   void _initializeDefaultData() {
-    data = List.generate(juzCount, (juz) => List.generate(pagesPerJuz[juz], (_) => 0));
-    revisedDates = List.generate(juzCount, (juz) => List.generate(pagesPerJuz[juz], (_) => null));
+    data = List.generate(
+        juzCount, (juz) => List.generate(pagesPerJuz[juz], (_) => 0));
+    revisedDates = List.generate(
+        juzCount, (juz) => List.generate(pagesPerJuz[juz], (_) => null));
   }
 
   Future<void> _saveData() async {
@@ -247,69 +258,142 @@ class _MemorizationGridState extends State<MemorizationGrid> {
   Future<void> _exportToExcel({String? customDirectory}) async {
     try {
       final excel = ex.Excel.createExcel();
+
       // --- Sheet 1: Page Numbers ---
       final pageSheet = excel['Page numbers'];
-      // Header row
-      pageSheet.cell(ex.CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 0)).value = ex.TextCellValue('');
-      for (int page = 0; page < pagesPerJuz.reduce((a, b) => a > b ? a : b); page++) {
-        pageSheet.cell(ex.CellIndex.indexByColumnRow(columnIndex: page + 1, rowIndex: 0)).value = ex.TextCellValue('Page ${page + 1}');
+      pageSheet
+          .cell(ex.CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 0))
+          .value = ex.TextCellValue('');
+      for (int page = 0;
+          page < pagesPerJuz.reduce((a, b) => a > b ? a : b);
+          page++) {
+        pageSheet
+            .cell(ex.CellIndex.indexByColumnRow(
+                columnIndex: page + 1, rowIndex: 0))
+            .value = ex.TextCellValue('Page ${page + 1}');
       }
-      // Data rows
       for (int juz = 0; juz < juzCount; juz++) {
-        pageSheet.cell(ex.CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: juz + 1)).value = ex.TextCellValue('Juz ${juz + 1}');
+        pageSheet
+            .cell(ex.CellIndex.indexByColumnRow(
+                columnIndex: 0, rowIndex: juz + 1))
+            .value = ex.TextCellValue('Juz ${juz + 1}');
         for (int page = 0; page < pagesPerJuz[juz]; page++) {
-          pageSheet.cell(ex.CellIndex.indexByColumnRow(columnIndex: page + 1, rowIndex: juz + 1)).value = ex.IntCellValue(getPageNumber(juz, page));
+          pageSheet
+              .cell(ex.CellIndex.indexByColumnRow(
+                  columnIndex: page + 1, rowIndex: juz + 1))
+              .value = ex.IntCellValue(getPageNumber(juz, page));
         }
       }
 
       // --- Sheet 2: Scores/Strength ---
       final strengthSheet = excel['Scores'];
-      strengthSheet.cell(ex.CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 0)).value = ex.TextCellValue('');
-      for (int page = 0; page < pagesPerJuz.reduce((a, b) => a > b ? a : b); page++) {
-        strengthSheet.cell(ex.CellIndex.indexByColumnRow(columnIndex: page + 1, rowIndex: 0)).value = ex.TextCellValue('Page ${page + 1}');
+      strengthSheet
+          .cell(ex.CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 0))
+          .value = ex.TextCellValue('');
+      for (int page = 0;
+          page < pagesPerJuz.reduce((a, b) => a > b ? a : b);
+          page++) {
+        strengthSheet
+            .cell(ex.CellIndex.indexByColumnRow(
+                columnIndex: page + 1, rowIndex: 0))
+            .value = ex.TextCellValue('Page ${page + 1}');
       }
       for (int juz = 0; juz < juzCount; juz++) {
-        strengthSheet.cell(ex.CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: juz + 1)).value = ex.TextCellValue('Juz ${juz + 1}');
+        strengthSheet
+            .cell(ex.CellIndex.indexByColumnRow(
+                columnIndex: 0, rowIndex: juz + 1))
+            .value = ex.TextCellValue('Juz ${juz + 1}');
         for (int page = 0; page < pagesPerJuz[juz]; page++) {
-          strengthSheet.cell(ex.CellIndex.indexByColumnRow(columnIndex: page + 1, rowIndex: juz + 1)).value = ex.IntCellValue(data[juz][page]);
+          strengthSheet
+              .cell(ex.CellIndex.indexByColumnRow(
+                  columnIndex: page + 1, rowIndex: juz + 1))
+              .value = ex.IntCellValue(data[juz][page]);
         }
       }
 
       // --- Sheet 3: Last revised ---
       final datesSheet = excel['Last revised'];
-      datesSheet.cell(ex.CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 0)).value = ex.TextCellValue('');
-      for (int page = 0; page < pagesPerJuz.reduce((a, b) => a > b ? a : b); page++) {
-        datesSheet.cell(ex.CellIndex.indexByColumnRow(columnIndex: page + 1, rowIndex: 0)).value = ex.TextCellValue('Page ${page + 1}');
+      datesSheet
+          .cell(ex.CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 0))
+          .value = ex.TextCellValue('');
+      for (int page = 0;
+          page < pagesPerJuz.reduce((a, b) => a > b ? a : b);
+          page++) {
+        datesSheet
+            .cell(ex.CellIndex.indexByColumnRow(
+                columnIndex: page + 1, rowIndex: 0))
+            .value = ex.TextCellValue('Page ${page + 1}');
       }
       for (int juz = 0; juz < juzCount; juz++) {
-        datesSheet.cell(ex.CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: juz + 1)).value = ex.TextCellValue('Juz ${juz + 1}');
+        datesSheet
+            .cell(ex.CellIndex.indexByColumnRow(
+                columnIndex: 0, rowIndex: juz + 1))
+            .value = ex.TextCellValue('Juz ${juz + 1}');
         for (int page = 0; page < pagesPerJuz[juz]; page++) {
           final date = revisedDates[juz][page];
           if (date != null) {
-            datesSheet.cell(ex.CellIndex.indexByColumnRow(columnIndex: page + 1, rowIndex: juz + 1)).value = ex.TextCellValue(_dateFormat.format(date));
+            datesSheet
+                .cell(ex.CellIndex.indexByColumnRow(
+                    columnIndex: page + 1, rowIndex: juz + 1))
+                .value = ex.TextCellValue(_dateFormat.format(date));
           }
         }
       }
 
-      // Remove the default empty sheet if it exists
       if (excel.sheets.keys.contains('Sheet1')) {
         excel.delete('Sheet1');
       }
 
-      String filePath;
-      if (customDirectory != null) {
-        filePath = '$customDirectory/quran_memorization_data.xlsx';
-      } else {
-        final directory = await getApplicationDocumentsDirectory();
-        filePath = '${directory.path}/quran_memorization_data.xlsx';
-      }
-      final file = File(filePath);
-      await file.writeAsBytes(excel.encode()!);
+      final bytes = excel.encode();
+      if (bytes == null) return;
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Data exported to $filePath')),
+      if (kIsWeb) {
+        // --- WEB EXPORT LOGIC ---
+        // Convert List<int> to Uint8List so .toJS works
+        final Uint8List uint8Bytes = Uint8List.fromList(bytes);
+
+        // Create a blob from the bytes
+        final blob = web.Blob(
+          [uint8Bytes.toJS].toJS,
+          web.BlobPropertyBag(
+              type:
+                  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'),
         );
+
+        // Create a temporary URL for the blob
+        final url = web.URL.createObjectURL(blob);
+
+        // Create an anchor element and trigger download
+        final anchor = web.document.createElement('a') as web.HTMLAnchorElement;
+        anchor.href = url;
+        anchor.download = 'quran_memorization_data.xlsx';
+        anchor.click();
+
+        // Cleanup
+        web.URL.revokeObjectURL(url);
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Download started in browser')),
+          );
+        }
+      } else {
+        // --- MOBILE/DESKTOP EXPORT LOGIC ---
+        String filePath;
+        if (customDirectory != null) {
+          filePath = '$customDirectory/quran_memorization_data.xlsx';
+        } else {
+          final directory = await getApplicationDocumentsDirectory();
+          filePath = '${directory.path}/quran_memorization_data.xlsx';
+        }
+        final file = File(filePath);
+        await file.writeAsBytes(bytes);
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Data exported to $filePath')),
+          );
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -321,6 +405,13 @@ class _MemorizationGridState extends State<MemorizationGrid> {
   }
 
   Future<void> _showExportDialog() async {
+    // If on Web, skip the dialog and download immediately
+    if (kIsWeb) {
+      await _exportToExcel();
+      return;
+    }
+
+    // If on Mobile/Desktop, show the location picker dialog
     final result = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
@@ -334,7 +425,8 @@ class _MemorizationGridState extends State<MemorizationGrid> {
           TextButton(
             onPressed: () async {
               final navigator = Navigator.of(context);
-              String? selectedDirectory = await FilePicker.platform.getDirectoryPath();
+              String? selectedDirectory =
+                  await FilePicker.platform.getDirectoryPath();
               navigator.pop(selectedDirectory);
             },
             child: const Text('Choose location...'),
@@ -346,7 +438,8 @@ class _MemorizationGridState extends State<MemorizationGrid> {
         ],
       ),
     );
-    if (result == null) return; // Cancelled
+
+    if (result == null) return;
     if (result == 'default') {
       await _exportToExcel();
     } else if (result.isNotEmpty) {
@@ -369,54 +462,56 @@ class _MemorizationGridState extends State<MemorizationGrid> {
         final excel = ex.Excel.decodeBytes(bytes);
         // --- Import Scores/Strength ---
         final strengthSheet = excel['Scores'];
-          for (int juz = 0; juz < juzCount; juz++) {
-            for (int page = 0; page < pagesPerJuz[juz]; page++) {
-              final cell = strengthSheet.cell(ex.CellIndex.indexByColumnRow(columnIndex: page + 1, rowIndex: juz + 1));
-              final value = cell.value;
-              String? strValue;
-              if (value is ex.IntCellValue) {
-                data[juz][page] = value.value;
-              } else if (value is ex.TextCellValue) {
-                strValue = value.value is String
-                    ? value.value as String
-                    : (value.value as ex.TextSpan?)?.text;
-                data[juz][page] = int.tryParse(strValue ?? '') ?? 0;
-              } else if (value is ex.TextSpan) {
-                strValue = (value as ex.TextSpan?)?.text;
-                data[juz][page] = int.tryParse(strValue ?? '') ?? 0;
-              } else {
-                data[juz][page] = 0;
-              }
+        for (int juz = 0; juz < juzCount; juz++) {
+          for (int page = 0; page < pagesPerJuz[juz]; page++) {
+            final cell = strengthSheet.cell(ex.CellIndex.indexByColumnRow(
+                columnIndex: page + 1, rowIndex: juz + 1));
+            final value = cell.value;
+            String? strValue;
+            if (value is ex.IntCellValue) {
+              data[juz][page] = value.value;
+            } else if (value is ex.TextCellValue) {
+              strValue = value.value is String
+                  ? value.value as String
+                  : (value.value as ex.TextSpan?)?.text;
+              data[juz][page] = int.tryParse(strValue ?? '') ?? 0;
+            } else if (value is ex.TextSpan) {
+              strValue = (value as ex.TextSpan?)?.text;
+              data[juz][page] = int.tryParse(strValue ?? '') ?? 0;
+            } else {
+              data[juz][page] = 0;
             }
           }
-        
+        }
+
         // --- Import Last revised ---
         final datesSheet = excel['Last revised'];
-          for (int juz = 0; juz < juzCount; juz++) {
-            for (int page = 0; page < pagesPerJuz[juz]; page++) {
-              final cell = datesSheet.cell(ex.CellIndex.indexByColumnRow(columnIndex: page + 1, rowIndex: juz + 1));
-              final value = cell.value;
-              String? strValue;
-              if (value is ex.TextCellValue) {
-                strValue = value.value is String
-                    ? value.value as String
-                    : (value.value as ex.TextSpan?)?.text;
-              } else if (value is ex.TextSpan) {
-                strValue = (value as ex.TextSpan?)?.text;
-              } else {
-                strValue = null;
-              }
-              if ((strValue?.trim().isNotEmpty ?? false)) {
-                try {
-                  revisedDates[juz][page] = _dateFormat.parse(strValue!);
-                } catch (_) {
-                  revisedDates[juz][page] = null;
-                }
-              } else {
+        for (int juz = 0; juz < juzCount; juz++) {
+          for (int page = 0; page < pagesPerJuz[juz]; page++) {
+            final cell = datesSheet.cell(ex.CellIndex.indexByColumnRow(
+                columnIndex: page + 1, rowIndex: juz + 1));
+            final value = cell.value;
+            String? strValue;
+            if (value is ex.TextCellValue) {
+              strValue = value.value is String
+                  ? value.value as String
+                  : (value.value as ex.TextSpan?)?.text;
+            } else if (value is ex.TextSpan) {
+              strValue = (value as ex.TextSpan?)?.text;
+            } else {
+              strValue = null;
+            }
+            if ((strValue?.trim().isNotEmpty ?? false)) {
+              try {
+                revisedDates[juz][page] = _dateFormat.parse(strValue!);
+              } catch (_) {
                 revisedDates[juz][page] = null;
               }
+            } else {
+              revisedDates[juz][page] = null;
             }
           }
+        }
         await _saveData();
         setState(() {});
         if (mounted) {
@@ -437,7 +532,8 @@ class _MemorizationGridState extends State<MemorizationGrid> {
   Future<void> _showEditDialog(int juzIndex, int pageIndex) async {
     int currentStrength = data[juzIndex][pageIndex];
     DateTime? currentDate = revisedDates[juzIndex][pageIndex];
-    final TextEditingController strengthController = TextEditingController(text: currentStrength.toString());
+    final TextEditingController strengthController =
+        TextEditingController(text: currentStrength.toString());
     DateTime? selectedDate = currentDate;
     await showDialog<bool>(
       context: context,
@@ -501,12 +597,14 @@ class _MemorizationGridState extends State<MemorizationGrid> {
               int? newStrength = int.tryParse(strengthController.text);
               if (newStrength == null || newStrength < 0 || newStrength > 5) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Strength must be between 0 and 5.')),
+                  const SnackBar(
+                      content: Text('Strength must be between 0 and 5.')),
                 );
                 return;
               }
               data[juzIndex][pageIndex] = newStrength;
-              revisedDates[juzIndex][pageIndex] = newStrength > 0 ? selectedDate : null;
+              revisedDates[juzIndex][pageIndex] =
+                  newStrength > 0 ? selectedDate : null;
               _saveData();
               setState(() {});
               Navigator.pop(context, true);
@@ -585,7 +683,8 @@ class _MemorizationGridState extends State<MemorizationGrid> {
               newStrength = int.tryParse(strengthController.text);
               if (newStrength == null || newStrength! < 0 || newStrength! > 5) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Strength must be between 0 and 5.')),
+                  const SnackBar(
+                      content: Text('Strength must be between 0 and 5.')),
                 );
                 return;
               }
@@ -594,7 +693,8 @@ class _MemorizationGridState extends State<MemorizationGrid> {
                 final juz = int.parse(parts[0]);
                 final page = int.parse(parts[1]);
                 data[juz][page] = newStrength!;
-                revisedDates[juz][page] = newStrength! > 0 ? selectedDate : null;
+                revisedDates[juz][page] =
+                    newStrength! > 0 ? selectedDate : null;
               }
               _saveData();
               setState(() {
@@ -630,8 +730,10 @@ class _MemorizationGridState extends State<MemorizationGrid> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text('Total pages: $totalPages'),
-            Text('Pages memorized: $memorized (${(memorized / totalPages * 100).toStringAsFixed(1)}%)'),
-            Text('Pages mastered: $mastered (${(mastered / totalPages * 100).toStringAsFixed(1)}%)'),
+            Text(
+                'Pages memorized: $memorized (${(memorized / totalPages * 100).toStringAsFixed(1)}%)'),
+            Text(
+                'Pages mastered: $mastered (${(mastered / totalPages * 100).toStringAsFixed(1)}%)'),
           ],
         ),
         actions: [
@@ -656,10 +758,13 @@ class _MemorizationGridState extends State<MemorizationGrid> {
             children: [
               Text('• Tap a cell to increment its strength.'),
               Text('• Long-press a cell to manually edit strength/date.'),
-              Text('• Use the Select button to select multiple cells for bulk edit.'),
+              Text(
+                  '• Use the Select button to select multiple cells for bulk edit.'),
               Text('• Tap two cells to select a range.'),
-              Text('• Use the import/export buttons to backup or restore your data.'),
-              Text('• Use the theme button to switch between light, dark, and system modes.'),
+              Text(
+                  '• Use the import/export buttons to backup or restore your data.'),
+              Text(
+                  '• Use the theme button to switch between light, dark, and system modes.'),
             ],
           ),
         ),
@@ -728,62 +833,64 @@ class _MemorizationGridState extends State<MemorizationGrid> {
     );
   }
 
-void _showAppInfoDialog() {
-  showDialog(
-    context: context,
-    builder: (context) => FutureBuilder<PackageInfo>(
-      future: PackageInfo.fromPlatform(),
-      builder: (context, snapshot) {
-        final version = snapshot.hasData ? snapshot.data!.version : '...';
-        return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const SizedBox(height: 10),
-              // Larger Icon
-              ClipRRect(
-                borderRadius: BorderRadius.circular(24),
-                child: Image.asset(
-                  'assets/icon/app_icon.png',
-                  width: 120, // Increased size
-                  height: 120,
-                  fit: BoxFit.cover,
+  void _showAppInfoDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => FutureBuilder<PackageInfo>(
+        future: PackageInfo.fromPlatform(),
+        builder: (context, snapshot) {
+          final version = snapshot.hasData ? snapshot.data!.version : '...';
+          return AlertDialog(
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const SizedBox(height: 10),
+                // Larger Icon
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(24),
+                  child: Image.asset(
+                    'assets/icon/app_icon.png',
+                    width: 120, // Increased size
+                    height: 120,
+                    fit: BoxFit.cover,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 20),
-              const Text(
-                'Quran Memorization Tracker',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 8),
-              Text('Version $version', style: const TextStyle(color: Colors.grey)),
-              const SizedBox(height: 20),
-              const Divider(),
-              const SizedBox(height: 10),
-              // Name only appears once here
-              const Text(
-                'Created by Syed Fawwaz Hussain',
-                style: TextStyle(fontSize: 14),
-              ),
-              const Text(
-                '© 2026 All rights reserved',
-                style: TextStyle(fontSize: 12, color: Colors.grey),
+                const SizedBox(height: 20),
+                const Text(
+                  'Quran Memorization Tracker',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
+                Text('Version $version',
+                    style: const TextStyle(color: Colors.grey)),
+                const SizedBox(height: 20),
+                const Divider(),
+                const SizedBox(height: 10),
+                // Name only appears once here
+                const Text(
+                  'Created by Syed Fawwaz Hussain',
+                  style: TextStyle(fontSize: 14),
+                ),
+                const Text(
+                  '© 2026 All rights reserved',
+                  style: TextStyle(fontSize: 12, color: Colors.grey),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Close'),
               ),
             ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Close'),
-            ),
-          ],
-        );
-      },
-    ),
-  );
-}
+          );
+        },
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -850,7 +957,8 @@ void _showAppInfoDialog() {
               child: Scrollbar(
                 controller: _horizontalScrollController,
                 thumbVisibility: true,
-                notificationPredicate: (notification) => notification.depth == 1,
+                notificationPredicate: (notification) =>
+                    notification.depth == 1,
                 child: SingleChildScrollView(
                   controller: _verticalScrollController,
                   scrollDirection: Axis.vertical,
@@ -875,47 +983,61 @@ void _showAppInfoDialog() {
                                   child: Text(
                                     'Juz ${juzIndex + 1}',
                                     textAlign: TextAlign.center,
-                                    style: const TextStyle(fontWeight: FontWeight.bold),
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.bold),
                                   ),
                                 ),
                               ),
                               ...List.generate(maxPages, (pageIndex) {
                                 if (pageIndex < pagesPerJuz[juzIndex]) {
                                   int level = data[juzIndex][pageIndex];
-                                  int pageNum = getPageNumber(juzIndex, pageIndex);
-                                  DateTime? revisedDate = revisedDates[juzIndex][pageIndex];
+                                  int pageNum =
+                                      getPageNumber(juzIndex, pageIndex);
+                                  DateTime? revisedDate =
+                                      revisedDates[juzIndex][pageIndex];
                                   return GestureDetector(
                                     behavior: HitTestBehavior.opaque,
                                     onTap: _selectionMode
-                                        ? () => _handleRangeTap(juzIndex, pageIndex)
-                                        : () => _updateStrength(juzIndex, pageIndex),
+                                        ? () =>
+                                            _handleRangeTap(juzIndex, pageIndex)
+                                        : () => _updateStrength(
+                                            juzIndex, pageIndex),
                                     onLongPress: _selectionMode
-                                        ? () => _toggleCellSelection(juzIndex, pageIndex)
-                                        : () => _showEditDialog(juzIndex, pageIndex),
+                                        ? () => _toggleCellSelection(
+                                            juzIndex, pageIndex)
+                                        : () => _showEditDialog(
+                                            juzIndex, pageIndex),
                                     child: Container(
                                       width: 70,
                                       height: 60,
                                       alignment: Alignment.center,
                                       decoration: BoxDecoration(
                                         color: getStrengthColor(level, context),
-                                        border: _selectionMode && _selectedCells.contains(_cellKey(juzIndex, pageIndex))
-                                            ? Border.all(color: Colors.blue, width: 3)
+                                        border: _selectionMode &&
+                                                _selectedCells.contains(
+                                                    _cellKey(
+                                                        juzIndex, pageIndex))
+                                            ? Border.all(
+                                                color: Colors.blue, width: 3)
                                             : null,
                                       ),
                                       child: Column(
-                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
                                         children: [
                                           Text('Pg $pageNum',
                                               style: TextStyle(
                                                 fontSize: 10,
-                                                color: getTextColor(level, context),
+                                                color: getTextColor(
+                                                    level, context),
                                               )),
                                           Text(
                                             level == 0 ? '' : level.toString(),
                                             style: TextStyle(
                                               fontWeight: FontWeight.bold,
                                               fontSize: 16,
-                                              color: getTextColor(level, context),
+                                              color:
+                                                  getTextColor(level, context),
                                             ),
                                           ),
                                           if (revisedDate != null)
@@ -923,7 +1045,8 @@ void _showAppInfoDialog() {
                                               _dateFormat.format(revisedDate),
                                               style: TextStyle(
                                                 fontSize: 8,
-                                                color: getTextColor(level, context),
+                                                color: getTextColor(
+                                                    level, context),
                                               ),
                                             ),
                                         ],

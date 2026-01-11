@@ -728,39 +728,62 @@ class _MemorizationGridState extends State<MemorizationGrid> {
     );
   }
 
-  void _showAppInfoDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => FutureBuilder<PackageInfo>(
-        future: PackageInfo.fromPlatform(),
-        builder: (context, snapshot) {
-          final version = snapshot.hasData ? snapshot.data!.version : '...';
-          return AlertDialog(
-            title: const Text('App Info'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('Quran Memorization Tracker'),
-                const SizedBox(height: 8),
-                Text('Version: $version'),
-                const SizedBox(height: 8),
-                const Text('Developer: Syed Fawwaz Hussain'),
-                const SizedBox(height: 8),
-                //const Text('© 2025 Syed Fawwaz Hussain. All rights reserved.'),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Close'),
+void _showAppInfoDialog() {
+  showDialog(
+    context: context,
+    builder: (context) => FutureBuilder<PackageInfo>(
+      future: PackageInfo.fromPlatform(),
+      builder: (context, snapshot) {
+        final version = snapshot.hasData ? snapshot.data!.version : '...';
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 10),
+              // Larger Icon
+              ClipRRect(
+                borderRadius: BorderRadius.circular(24),
+                child: Image.asset(
+                  'assets/icon/app_icon.png',
+                  width: 120, // Increased size
+                  height: 120,
+                  fit: BoxFit.cover,
+                ),
+              ),
+              const SizedBox(height: 20),
+              const Text(
+                'Quran Memorization Tracker',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+              Text('Version $version', style: const TextStyle(color: Colors.grey)),
+              const SizedBox(height: 20),
+              const Divider(),
+              const SizedBox(height: 10),
+              // Name only appears once here
+              const Text(
+                'Created by Syed Fawwaz Hussain',
+                style: TextStyle(fontSize: 14),
+              ),
+              const Text(
+                '© 2026 All rights reserved',
+                style: TextStyle(fontSize: 12, color: Colors.grey),
               ),
             ],
-          );
-        },
-      ),
-    );
-  }
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Close'),
+            ),
+          ],
+        );
+      },
+    ),
+  );
+}
 
   @override
   Widget build(BuildContext context) {

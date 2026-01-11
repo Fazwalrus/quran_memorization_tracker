@@ -359,10 +359,13 @@ class _MemorizationGridState extends State<MemorizationGrid> {
       FilePickerResult? result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['xlsx'],
+        withData: true,
       );
       if (result != null) {
-        final file = File(result.files.single.path!);
-        final bytes = await file.readAsBytes();
+        final bytes = result.files.single.bytes;
+        if (bytes == null) {
+          throw Exception("No data received from file");
+        }
         final excel = ex.Excel.decodeBytes(bytes);
         // --- Import Scores/Strength ---
         final strengthSheet = excel['Scores'];
